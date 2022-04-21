@@ -2,29 +2,29 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from plot_utils import (
-    get_yunits,
-    get_obs_name,
-    get_pred_name,
-)
 import xarray as xr
 
 
-def seg_date_data(df, seg_id, start_date=None, end_date=None):
-    df = df[df["seg_id_nat"] == seg_id]
-    df.set_index("date", inplace=True)
-    df = df.loc[start_date:end_date]
+def seg_time_data(df,
+                  spatial_id,
+                  spatial_idx_name,
+                  time_idx_name,
+                  start_time=None,
+                  end_time=None):
+    df = df[df[spatial_idx_name] == spatial_id]
+    df.set_index(time_idx_name, inplace=True)
+    df = df.loc[start_time:end_time]
     # df.reset_index(inplace=True)
     return df
 
 
-def combine_model_data_seg_dates(
-    model_files, seg_id, variable, model_ids, start_date=None, end_date=None
+def combine_model_data_seg_times(
+    model_files, spatial_id, variable, model_ids, start_time=None, end_time=None
 ):
     df_preds_list = []
     for i, exp_data_file in enumerate(model_files):
         df = pd.read_feather(exp_data_file)
-        df_seg = seg_date_data(df, seg_id, start_date, end_date)
+        df_seg = seg_time_data(df, spatial_id, start_time, end_time)
         new_col_name = model_ids[i]
         df_seg.rename(
             columns={get_pred_name(variable): new_col_name}, inplace=True
@@ -34,40 +34,40 @@ def combine_model_data_seg_dates(
     return df_preds
 
 
-def get_format_obs(obs_file, seg, variable, start_date, end_date):
+def get_format_obs(obs_file, seg, variable, start_time, end_time):
     df_obs = (
         xr.open_zarr(obs_file)[get_obs_name(variable)]
         .to_dataframe()
         .reset_index()
     )
-    df_obs = seg_date_data(df_obs, seg, start_date, end_date)
+    df_obs = seg_time_data(df_obs, seg, start_time, end_time)
     df_obs.rename(
         columns={get_obs_name(variable): "observations"}, inplace=True
     )
     return df_obs[["observations"]]
 
 
-def get_fmt_sntemp(sntemp_file, variable, seg, start_date=None, end_date=None):
+def get_fmt_sntemp(sntemp_file, variable, seg, start_time=None, end_time=None):
     df_sntemp = pd.read_feather(sntemp_file)
-    df_sntemp["seg_id_nat"] = df_sntemp["seg_id_nat"].astype(int)
+    df_sntemp["spatial_id_nat"] = df_sntemp["spatial_id_nat"].astype(int)
 
     if variable == "temp_degC":
         sntemp_var = "seg_tave_water"
     else:
         sntemp_var = "seg_outflow"
-    df_sntemp_preds = seg_date_data(df_sntemp, seg, start_date, end_date)[
+    df_sntemp_preds = seg_time_data(df_sntemp, seg, start_time, end_time)[
         sntemp_var
     ]
     df_sntemp_preds.rename("uncal prms/sntemp", inplace=True)
     return df_sntemp_preds
 
 
-def data_flow_ts_plot(
+def ts_plot(
     out_model_files,
     obs_file,
     seg,
-    start_date=None,
-    end_date=None,
+    start_time=None,
+    end_time=None,
     sntemp_file=None,
     variable="temp",
     model_labels=None,
@@ -79,8 +79,8 @@ def data_flow_ts_plot(
     :param out_model_files: [list] paths to .feather output model files
     :param obs_file: [str] paths to .csv observation file
     :param seg: [int] which segment you want to plot
-    :param start_date: [str] date you want plot to start at YYYY-MM-DD
-    :param end_date: [str] date you want plot to end at YYYY-MM-DD
+    :param start_time: [str] date you want plot to start at YYYY-MM-DD
+    :param end_time: [str] date you want plot to end at YYYY-MM-DD
     :param sntemp_file: [str] sntemp file
     :param variable: [str] variable to plot. either 'flow' or 'temp'
     :param model_labels: [list] labels for models
@@ -88,15 +88,15 @@ def data_flow_ts_plot(
 
     if not model_labels:
         model_labels = list(range(len(out_model_files)))
-    df_preds = combine_model_data_seg_dates(
-        out_model_files, seg, variable, model_labels, start_date, end_date
+    df_preds = combine_model_data_seg_times(
+        out_model_files, seg, variable, model_labels, start_time, end_time
     )
     if sntemp_file:
         sntemp_preds = get_fmt_sntemp(
-            sntemp_file, variable, seg, start_date, end_date
+            sntemp_file, variable, seg, start_time, end_time
         )
         df_preds = df_preds.join(sntemp_preds)
-    df_obs = get_format_obs(obs_file, seg, variable, start_date, end_date)
+    df_obs = get_format_obs(obs_file, seg, variable, start_time, end_time)
     df = df_preds.join(df_obs)
     if plot_month:
         df = df[df.index.month == plot_month]
@@ -121,8 +121,8 @@ def plot_scatter_obs_preds(
     out_model_files,
     obs_file,
     seg,
-    start_date=None,
-    end_date=None,
+    start_time=None,
+    end_time=None,
     sntemp_file=None,
     variable="temp",
     model_labels=None,
@@ -136,18 +136,18 @@ def plot_scatter_obs_preds(
     :param out_model_files: [list] paths to .feather output model files
     :param obs_file: [str] paths to .csv observation file
     :param seg: [int] which segment you want to plot
-    :param start_date: [str] date you want plot to start at YYYY-MM-DD
-    :param end_date: [str] date you want plot to end at YYYY-MM-DD
+    :param start_time: [str] date you want plot to start at YYYY-MM-DD
+    :param end_time: [str] date you want plot to end at YYYY-MM-DD
     :param sntemp_file: [str] sntemp file
     :param variable: [str] variable to plot. either 'flow' or 'temp'
     :param model_labels: [list] labels for models
     """
-    df = data_flow_ts_plot(
+    df = ts_plot(
         out_model_files,
         obs_file,
         seg,
-        start_date,
-        end_date,
+        start_time,
+        end_time,
         sntemp_file,
         variable,
         model_labels,
@@ -174,12 +174,12 @@ def plot_scatter_obs_preds(
     return ax
 
 
-def plot_one_seg_dates(
+def plot_one_seg_times(
     out_model_files,
     obs_file,
     seg,
-    start_date=None,
-    end_date=None,
+    start_time=None,
+    end_time=None,
     out_file=None,
     sntemp_file=None,
     variable="temp",
@@ -195,8 +195,8 @@ def plot_one_seg_dates(
     :param out_model_files: [list] paths to .feather output model files
     :param obs_file: [str] paths to .csv observation file
     :param seg: [int] which segment you want to plot
-    :param start_date: [str] date you want plot to start at YYYY-MM-DD
-    :param end_date: [str] date you want plot to end at YYYY-MM-DD
+    :param start_time: [str] date you want plot to start at YYYY-MM-DD
+    :param end_time: [str] date you want plot to end at YYYY-MM-DD
     :param sntemp_file: [str] sntemp file
     :param variable: [str] variable to plot. either 'flow' or 'temp'
     :param figsize: [tuple] figure size
@@ -207,12 +207,12 @@ def plot_one_seg_dates(
     points. If false, they will be plotted as a line
     :return:
     """
-    df = data_flow_ts_plot(
+    df = ts_plot(
         out_model_files,
         obs_file,
         seg,
-        start_date,
-        end_date,
+        start_time,
+        end_time,
         sntemp_file,
         variable,
         model_labels,
